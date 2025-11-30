@@ -1,0 +1,18 @@
+---
+title: "main"
+format: html
+---
+
+# Data Preparation and preprocessing
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE}
+#| echo: false
+library(tidyverse)
+library(mice)
+```
+
+
+```{r data-prep}
+data = readRDS(here::here("Main RCT analyses/imputed_data.rds"))
+```
+
