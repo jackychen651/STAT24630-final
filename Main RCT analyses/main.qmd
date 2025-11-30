@@ -9,10 +9,281 @@ format: html
 #| echo: false
 library(tidyverse)
 library(mice)
+library(broom)
 ```
 
 
 ```{r data-prep}
-data = readRDS(here::here("Main RCT analyses/imputed_data.rds"))
+data = readRDS(here::here("Main RCT analyses/raw_data.rds"))
+# We only keep the variables that are necessary for the primary analysis
+data_primary <- data |>
+  select(
+    WINS.ID,
+    Treatment,
+    HEI2015_TOTAL_SCORE_bl,
+    HEI2015_TOTAL_SCORE_el,
+    HEI2015_TOTAL_SCORE_change,
+    Age_years,
+    Sex_bcf,
+    Race2_bcf,
+    Ethnicity_bcf,
+    Education_grouped
+  ) |>
+  mutate(Completion = ifelse(is.na(HEI2015_TOTAL_SCORE_el), 0, 1), .after = Treatment)
+
+head(data_primary)
 ```
+
+The data have the following characteristics:
+
+- It is a conditional randomized experiment. According to SAP(statistical analysis plan), it is stratified on sex.
+
+- We do not know whether someone follows the treatment or not. We only know the treatment assignment. (This means $ITT_{Y,sex}=ATE_{sex}$)
+
+- There are people failing to follow up at the end of the experiment. We need to handle this bias.
+
+Notation
+
+- $Z_i\in \left\{0,1\right\}$: treatment assignment for individual $i$.
+- $Y_i$: outcome for individual $i$.
+- $sex_i$: sex for individual $i$.
+- $R_i\in \left\{0,1\right\}$: follow-up indicator for individual $i$. $R_i=1$ means individual $i$ has follow-up, otherwise $R_i=0$.
+- $X_i$: baseline covariates for individual $i$.
+
+If there is no missing follow-up, the ATE will be:
+$$ATE_{male}=\mathbb{E}[Y_i\vert Z_i=1,sex_i=male]-\mathbb{E}[Y_i\vert Z_i=0,sex_i=male]$$
+$$ATE_{female}=\mathbb{E}[Y_i\vert Z_i=1,sex_i=female]-\mathbb{E}[Y_i\vert Z_i=0,sex_i=female]$$
+$$ATE=\mathbb{P}(male)ATE_{male}+\mathbb{P}(female)ATE_{female}$$
+However, what if there are missing follow-up?
+
+We still have conditional randomization:
+
+$$Z_i\perp (Y_i(1),Y_i(0))\vert sex_i$$
+
+Is this missing follow-up biased? We should check!
+
+```{r check-missing-at-random}
+# library(dplyr)
+# library(broom)
+# 
+# # baseline covariates
+# baseline_vars <- c(
+#   "Treatment",
+#   "Sex_bcf",
+#   "HEI2015_TOTAL_SCORE_bl",
+#   "Age_years",
+#   "Race2_bcf",
+#   "Ethnicity_bcf",
+#   "Education_grouped"
+# )
+# 
+# results <- lapply(baseline_vars, function(var){
+#   f <- as.formula(paste("Completion ~", var))
+#   fit <- glm(f, data=data_primary, family=binomial())
+#   tidy(fit)[2, c("term","estimate","std.error","p.value")]
+# }) %>%
+#   bind_rows() %>%
+#   mutate(
+#     OR = exp(estimate),
+#     CI_low  = exp(estimate - 1.96*std.error),
+#     CI_high = exp(estimate + 1.96*std.error)
+#   ) %>%
+#   select(term, OR, CI_low, CI_high, p.value)
+# 
+# results
+# 
+# library(ggplot2)
+# 
+# ggplot(data_primary, aes(x = HEI2015_TOTAL_SCORE_bl, fill = factor(Completion))) +
+#   geom_density(alpha = 0.5) +
+#   labs(fill="Completed Follow-up",
+#        title="Baseline HEI score vs. Follow-up completion") +
+#   theme_minimal()
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+
+# 改进的函数：添加变量名称列
+make_missing_table <- function(data, var){
+  data %>%
+    mutate(Completion = factor(Completion, labels = c("Missed","Completed"))) %>%
+    group_by(!!sym(var), Completion) %>%
+    summarise(n = n(), .groups="drop") %>%
+    group_by(!!sym(var)) %>%
+    mutate(pct = round(n / sum(n) * 100, 1)) %>%
+    pivot_wider(
+      names_from = Completion,
+      values_from = c(n, pct),
+      names_glue = "{Completion}_{.value}"
+    ) %>%
+    mutate(
+      # `More likely to miss?` = ifelse(`Missed_pct` > `Completed_pct`, "⬆ Yes", "No"),
+      Variable = var  # 添加变量名
+    ) %>%
+    arrange(desc(`Missed_pct`)) %>%
+    rename(Level = !!sym(var)) %>%
+    select(Variable, everything())  # 将Variable列放在最前面
+}
+
+vars_to_check <- c("Sex_bcf", "Education_grouped", "Race2_bcf",
+                   "Ethnicity_bcf", "Treatment")
+
+# 合并所有表格
+combined_table <- lapply(vars_to_check, function(v){
+  make_missing_table(data_primary, v)
+}) %>%
+  bind_rows()
+
+# 生成一张综合表格
+combined_table %>%
+  kbl(
+    caption = "Missingness Pattern Analysis by Demographic Variables",
+    align = "llcccccc",
+    booktabs = TRUE
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    latex_options = c("striped", "hold_position")
+  ) %>%
+  column_spec(1, bold = TRUE) %>%
+  collapse_rows(columns = 1, valign = "top")  # 合并相同变量的行
+
+```
+
+Maybe the missingness depends on baseline variables, therefore we use IPW.
+
+We have $$R_i\perp Y_i(z)\vert (Z_i,sex_i, X_i)$$
+
+Then we can use IPW for follow-up.
+
+Steps:
+
+1. Model the probability of being followed:
+$$\pi_i=\mathbb{P}(R_i\vert Z_i, sex_i, X_i)$$ using logistic regression
+
+2. Define weights for complete cases:
+$$w_i=\frac{1}{\hat{\pi}_i}$$ for $R_i=1$
+
+3. Within each sex stratum $sex$, estimate the outcome means using Horvitz-Thompson type estimator:(we cannot directly use the formula in class because it is designed for estimation without missingness, although it is also Horvitz-Thompson type estimator)
+$$\hat{\mu}_{HT}=\frac{1}{N}\sum_{i=1}^n\frac{Y_i}{\pi_i}$$
+
+Using this type of estimator, we can set up the estimator for ATE as:
+
+$$\hat{\mu}^{IPW}_{z,sex}=\frac{1}{N_{sex}}\sum_{\left\{i:sex_i=sex\right\} }\frac{R_i\boldsymbol{1}\left\{Z_i=z\right\}Y_i}{\hat{\pi}_i}$$
+(why? copied from GPT)
+
+
+```{r estimator-for-ATE}
+## 1) 拟合随访模型：π_i = P(R_i = 1 | Z_i, sex_i, X_i)
+##    这里 X_i 用的是 SAP 里这些 baseline covariates
+followup_model <- glm(
+  Completion ~ Treatment + Sex_bcf +
+    HEI2015_TOTAL_SCORE_bl + Age_years +
+    Race2_bcf + Ethnicity_bcf + Education_grouped,
+  data   = data_primary,
+  family = binomial()
+)
+
+## 2) 计算每个个体的 π_hat 和 IPW 权重 w_i = 1 / π_hat （只对 R_i=1 的人用）
+data_ipw <- data_primary |>
+  mutate(
+    # 将 Treatment 转换为 0/1 数值变量
+    # Control = 0, Weight Watchers = 1
+    Treatment_num = as.numeric(Treatment) - 1,  # ordered factor: 1,2 -> 0,1
+    pi_hat = predict(followup_model, type = "response"),
+    w_ipw  = ifelse(Completion == 1, 1 / pi_hat, 0)
+  )
+
+## 3) 在每个 sex 分层内，用 Horvitz–Thompson 类型的 IPW 估计
+##    注意：这里 Y_i 用的是 HEI2015_TOTAL_SCORE_el
+estimate_by_sex <- function(df) {
+  df_comp <- df[df$Completion == 1, ]
+  
+  # 计算该性别分层内各治疗组的总人数
+  N_treat <- sum(df$Treatment_num == 1)
+  N_ctrl  <- sum(df$Treatment_num == 0)
+  
+  # 如果某个治疗组人数为0，返回 NA
+  if (N_treat == 0 | N_ctrl == 0) {
+    warning("Treatment group has 0 participants in this stratum")
+    return(tibble(
+      N_treat = N_treat,
+      N_ctrl = N_ctrl,
+      mu1_HT = NA_real_,
+      mu0_HT = NA_real_,
+      ATE_HT = NA_real_,
+      mu1_norm = NA_real_,
+      mu0_norm = NA_real_,
+      ATE_norm = NA_real_
+    ))
+  }
+
+  ## Horvitz–Thompson 型估计器
+  mu1_HT <- with(
+    df_comp,
+    sum(w_ipw * (Treatment_num == 1) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
+  ) / N_treat
+  
+  mu0_HT <- with(
+    df_comp,
+    sum(w_ipw * (Treatment_num == 0) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
+  ) / N_ctrl
+  
+  ATE_HT <- mu1_HT - mu0_HT
+
+  ## Normalized IPW
+  num_treat <- with(
+    df_comp,
+    sum(w_ipw * (Treatment_num == 1) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
+  )
+  den_treat <- with(df_comp, sum(w_ipw * (Treatment_num == 1), na.rm = TRUE))
+  
+  num_ctrl  <- with(
+    df_comp,
+    sum(w_ipw * (Treatment_num == 0) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
+  )
+  den_ctrl  <- with(df_comp, sum(w_ipw * (Treatment_num == 0), na.rm = TRUE))
+
+  mu1_norm <- num_treat / den_treat
+  mu0_norm <- num_ctrl  / den_ctrl
+  ATE_norm <- mu1_norm - mu0_norm
+
+  tibble(
+    N_treat  = N_treat,
+    N_ctrl   = N_ctrl,
+    mu1_HT   = mu1_HT,
+    mu0_HT   = mu0_HT,
+    ATE_HT   = ATE_HT,
+    mu1_norm = mu1_norm,
+    mu0_norm = mu0_norm,
+    ATE_norm = ATE_norm
+  )
+}
+
+## 4) 按 sex 分层估计分层内 ATE_s（= ITT_{Y,sex}）
+ests_by_sex <- data_ipw |>
+  dplyr::group_by(Sex_bcf) |>
+  dplyr::group_modify(~ estimate_by_sex(.x)) |>
+  dplyr::ungroup()
+
+print(ests_by_sex)
+
+## 5) 计算 overall ATE
+p_sex <- data_ipw |>
+  count(Sex_bcf) |>
+  mutate(p = n / sum(n)) |>
+  select(Sex_bcf, p)
+
+ATE_overall <- ests_by_sex |>
+  left_join(p_sex, by = "Sex_bcf") |>
+  summarise(
+    ATE_HT_overall   = sum(p * ATE_HT, na.rm = TRUE),
+    ATE_norm_overall = sum(p * ATE_norm, na.rm = TRUE)
+  )
+
+print(ATE_overall)
+```
+
+只保留ATE_HT_overall即可，另一个是Hájek estimator，太难了。
+
 
