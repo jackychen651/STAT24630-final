@@ -1,6 +1,8 @@
 ---
 title: "main"
-format: html
+format: 
+  html:
+    embed-resources: true
 ---
 
 # Data Preparation and preprocessing
@@ -287,3 +289,9 @@ print(ATE_overall)
 只保留ATE_HT_overall即可，另一个是Hájek estimator，太难了。
 
 
+# Sensitivity analysis
+```{r}
+
+
+
+```
