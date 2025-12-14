@@ -1,0 +1,151 @@
+=== 多重插补诊断报告 ===
+
+样本量: 376 
+插补数据集数量: 5 
+迭代次数: 20 
+
+缺失数据模式:
+# A tibble: 10 × 3
+   variable                   n_missing pct_missing
+   <chr>                          <int>       <dbl>
+ 1 HEI2015_TOTAL_SCORE_el            35        9.31
+ 2 HEI2015_TOTAL_SCORE_change        35        9.31
+ 3 WINS.ID                            0        0   
+ 4 Treatment                          0        0   
+ 5 HEI2015_TOTAL_SCORE_bl             0        0   
+ 6 Age_years                          0        0   
+ 7 Sex_bcf                            0        0   
+ 8 Race2_bcf                          0        0   
+ 9 Ethnicity_bcf                      0        0   
+10 Education_grouped                  0        0   
+
+
+插补方法:
+                                             Variable Method
+Treatment                                   Treatment   polr
+HEI2015_TOTAL_SCORE_bl         HEI2015_TOTAL_SCORE_bl    pmm
+HEI2015_TOTAL_SCORE_el         HEI2015_TOTAL_SCORE_el    pmm
+HEI2015_TOTAL_SCORE_change HEI2015_TOTAL_SCORE_change    pmm
+Age_years                                   Age_years    pmm
+Sex_bcf                                       Sex_bcf logreg
+Race2_bcf                                   Race2_bcf logreg
+Ethnicity_bcf                           Ethnicity_bcf logreg
+Education_grouped                   Education_grouped logreg
+
+
+各插补数据集的描述统计:
+
+--- 插补数据集 1 ---
+   WINS.ID              Treatment   HEI2015_TOTAL_SCORE_bl HEI2015_TOTAL_SCORE_el
+ Length:376         Control  :189   Min.   :22.87          Min.   :24.22         
+ Class :character   Treatment:187   1st Qu.:46.45          1st Qu.:47.84         
+ Mode  :character                   Median :54.20          Median :56.25         
+                                    Mean   :55.28          Mean   :57.18         
+                                    3rd Qu.:63.71          3rd Qu.:66.36         
+                                    Max.   :83.50          Max.   :88.33         
+ HEI2015_TOTAL_SCORE_change   Age_years       Sex_bcf           Race2_bcf        
+ Min.   :-35.658            Min.   :19.00   Length:376         Length:376        
+ 1st Qu.: -7.267            1st Qu.:38.00   Class :character   Class :character  
+ Median :  1.872            Median :49.00   Mode  :character   Mode  :character  
+ Mean   :  1.895            Mean   :47.74                                        
+ 3rd Qu.: 10.910            3rd Qu.:57.25                                        
+ Max.   : 57.444            Max.   :70.00                                        
+ Ethnicity_bcf      Education_grouped 
+ Length:376         Length:376        
+ Class :character   Class :character  
+ Mode  :character   Mode  :character  
+                                      
+                                      
+                                      
+
+--- 插补数据集 2 ---
+   WINS.ID              Treatment   HEI2015_TOTAL_SCORE_bl HEI2015_TOTAL_SCORE_el
+ Length:376         Control  :189   Min.   :22.87          Min.   :24.22         
+ Class :character   Treatment:187   1st Qu.:46.45          1st Qu.:48.21         
+ Mode  :character                   Median :54.20          Median :56.22         
+                                    Mean   :55.28          Mean   :57.14         
+                                    3rd Qu.:63.71          3rd Qu.:66.14         
+                                    Max.   :83.50          Max.   :88.33         
+ HEI2015_TOTAL_SCORE_change   Age_years       Sex_bcf           Race2_bcf        
+ Min.   :-35.658            Min.   :19.00   Length:376         Length:376        
+ 1st Qu.: -6.658            1st Qu.:38.00   Class :character   Class :character  
+ Median :  1.857            Median :49.00   Mode  :character   Mode  :character  
+ Mean   :  1.860            Mean   :47.74                                        
+ 3rd Qu.: 10.815            3rd Qu.:57.25                                        
+ Max.   : 57.444            Max.   :70.00                                        
+ Ethnicity_bcf      Education_grouped 
+ Length:376         Length:376        
+ Class :character   Class :character  
+ Mode  :character   Mode  :character  
+                                      
+                                      
+                                      
+
+--- 插补数据集 3 ---
+   WINS.ID              Treatment   HEI2015_TOTAL_SCORE_bl HEI2015_TOTAL_SCORE_el
+ Length:376         Control  :189   Min.   :22.87          Min.   :24.22         
+ Class :character   Treatment:187   1st Qu.:46.45          1st Qu.:47.99         
+ Mode  :character                   Median :54.20          Median :55.76         
+                                    Mean   :55.28          Mean   :56.77         
+                                    3rd Qu.:63.71          3rd Qu.:65.85         
+                                    Max.   :83.50          Max.   :88.33         
+ HEI2015_TOTAL_SCORE_change   Age_years       Sex_bcf           Race2_bcf        
+ Min.   :-35.658            Min.   :19.00   Length:376         Length:376        
+ 1st Qu.: -7.435            1st Qu.:38.00   Class :character   Class :character  
+ Median :  1.344            Median :49.00   Mode  :character   Mode  :character  
+ Mean   :  1.492            Mean   :47.74                                        
+ 3rd Qu.: 10.300            3rd Qu.:57.25                                        
+ Max.   : 57.444            Max.   :70.00                                        
+ Ethnicity_bcf      Education_grouped 
+ Length:376         Length:376        
+ Class :character   Class :character  
+ Mode  :character   Mode  :character  
+                                      
+                                      
+                                      
+
+--- 插补数据集 4 ---
+   WINS.ID              Treatment   HEI2015_TOTAL_SCORE_bl HEI2015_TOTAL_SCORE_el
+ Length:376         Control  :189   Min.   :22.87          Min.   :24.22         
+ Class :character   Treatment:187   1st Qu.:46.45          1st Qu.:47.74         
+ Mode  :character                   Median :54.20          Median :56.25         
+                                    Mean   :55.28          Mean   :56.94         
+                                    3rd Qu.:63.71          3rd Qu.:66.11         
+                                    Max.   :83.50          Max.   :88.33         
+ HEI2015_TOTAL_SCORE_change   Age_years       Sex_bcf           Race2_bcf        
+ Min.   :-35.658            Min.   :19.00   Length:376         Length:376        
+ 1st Qu.: -7.304            1st Qu.:38.00   Class :character   Class :character  
+ Median :  1.688            Median :49.00   Mode  :character   Mode  :character  
+ Mean   :  1.664            Mean   :47.74                                        
+ 3rd Qu.: 10.737            3rd Qu.:57.25                                        
+ Max.   : 57.444            Max.   :70.00                                        
+ Ethnicity_bcf      Education_grouped 
+ Length:376         Length:376        
+ Class :character   Class :character  
+ Mode  :character   Mode  :character  
+                                      
+                                      
+                                      
+
+--- 插补数据集 5 ---
+   WINS.ID              Treatment   HEI2015_TOTAL_SCORE_bl HEI2015_TOTAL_SCORE_el
+ Length:376         Control  :189   Min.   :22.87          Min.   :24.22         
+ Class :character   Treatment:187   1st Qu.:46.45          1st Qu.:47.99         
+ Mode  :character                   Median :54.20          Median :56.49         
+                                    Mean   :55.28          Mean   :57.27         
+                                    3rd Qu.:63.71          3rd Qu.:66.24         
+                                    Max.   :83.50          Max.   :88.33         
+ HEI2015_TOTAL_SCORE_change   Age_years       Sex_bcf           Race2_bcf        
+ Min.   :-35.658            Min.   :19.00   Length:376         Length:376        
+ 1st Qu.: -6.815            1st Qu.:38.00   Class :character   Class :character  
+ Median :  1.857            Median :49.00   Mode  :character   Mode  :character  
+ Mean   :  1.989            Mean   :47.74                                        
+ 3rd Qu.: 11.157            3rd Qu.:57.25                                        
+ Max.   : 57.444            Max.   :70.00                                        
+ Ethnicity_bcf      Education_grouped 
+ Length:376         Length:376        
+ Class :character   Class :character  
+ Mode  :character   Mode  :character  
+                                      
+                                      
+                                      

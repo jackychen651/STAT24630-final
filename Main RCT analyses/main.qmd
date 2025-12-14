@@ -105,7 +105,6 @@ library(dplyr)
 library(tidyr)
 library(kableExtra)
 
-# 改进的函数：添加变量名称列
 make_missing_table <- function(data, var){
   data %>%
     mutate(Completion = factor(Completion, labels = c("Missed","Completed"))) %>%
@@ -120,23 +119,21 @@ make_missing_table <- function(data, var){
     ) %>%
     mutate(
       # `More likely to miss?` = ifelse(`Missed_pct` > `Completed_pct`, "⬆ Yes", "No"),
-      Variable = var  # 添加变量名
+      Variable = var
     ) %>%
     arrange(desc(`Missed_pct`)) %>%
     rename(Level = !!sym(var)) %>%
-    select(Variable, everything())  # 将Variable列放在最前面
+    select(Variable, everything())
 }
 
 vars_to_check <- c("Sex_bcf", "Education_grouped", "Race2_bcf",
                    "Ethnicity_bcf", "Treatment")
 
-# 合并所有表格
 combined_table <- lapply(vars_to_check, function(v){
   make_missing_table(data_primary, v)
 }) %>%
   bind_rows()
 
-# 生成一张综合表格
 combined_table %>%
   kbl(
     caption = "Missingness Pattern Analysis by Demographic Variables",
@@ -148,13 +145,13 @@ combined_table %>%
     latex_options = c("striped", "hold_position")
   ) %>%
   column_spec(1, bold = TRUE) %>%
-  collapse_rows(columns = 1, valign = "top")  # 合并相同变量的行
+  collapse_rows(columns = 1, valign = "top")
 
 ```
 
 Maybe the missingness depends on baseline variables, therefore we use IPW.
 
-We have $$R_i\perp Y_i(z)\vert (Z_i,sex_i, X_i)$$
+We assume MAR(missing at random): $$R_i\perp Y_i(z)\vert (Z_i, X_i)$$
 
 Then we can use IPW for follow-up.
 
@@ -169,15 +166,31 @@ $$w_i=\frac{1}{\hat{\pi}_i}$$ for $R_i=1$
 3. Within each sex stratum $sex$, estimate the outcome means using Horvitz-Thompson type estimator:(we cannot directly use the formula in class because it is designed for estimation without missingness, although it is also Horvitz-Thompson type estimator)
 $$\hat{\mu}_{HT}=\frac{1}{N}\sum_{i=1}^n\frac{Y_i}{\pi_i}$$
 
-Using this type of estimator, we can set up the estimator for ATE as:
+Using this type of estimator, we can set up the estimator for ATE for a given sex as:
 
-$$\hat{\mu}^{IPW}_{z,sex}=\frac{1}{N_{sex}}\sum_{\left\{i:sex_i=sex\right\} }\frac{R_i\boldsymbol{1}\left\{Z_i=z\right\}Y_i}{\hat{\pi}_i}$$
-(why? copied from GPT)
+$$\hat{\mu}^{IPW}_{z,sex}=\frac{1}{N_{sex}}\sum_{\left\{i:sex_i=sex\right\} }\frac{R_i\boldsymbol{1}\left\{Z_i=z\right\}Y_i}{\hat{\pi}_i\mathbb{P}(Z=z\vert sex)}$$
+Proof that this is unbiased:
+
+By LLN, we have $$\hat{\mu}_{z,sex}^{IPW}=\frac{1}{N_{sex}}\sum_{\left\{ i:sex_i=sex \right\}}{\frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)}}\rightarrow \mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)} \right] $$
+
+$$\mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)} \right] =\mathbb{E} _{Z,X,Y}\left[ \mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)}\vert Z_i,X_i,Y_i \right] \vert sex \right] $$
+For the inner expectation,
+$$\mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)} \right] =\mathbb{E} _{Z,X,Y}\left[ \mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)}\vert Z_i,X_i,Y_i \right] \vert sex \right] $$
+$$\mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)}\vert Z_i,X_i,Y_i \right] =\mathbb{E} \left[ R_i\vert Z_i,X_i,Y_i \right] \frac{1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z\vert sex)}$$
+
+Plugging in,
+
+$$\mathbb{E} _{Z,X,Y}\left[ \mathbb{E} \left[ \frac{R_i1\left\{ Z_i=z \right\} Y_i}{\hat{\pi}_i\mathbb{P} (Z=z|sex)}|Z_i,X_i,Y_i \right] |sex \right] =\mathbb{E} _{Z,X,Y}\left[ \frac{1\left\{ Z_i=z \right\} Y_i}{\mathbb{P} (Z=z|sex)}|sex \right] 
+\\
+=\mathbb{E} _{Z,X,Y}\left[ \frac{1\left\{ Z_i=z \right\} Y_i\left( z \right)}{\mathbb{P} (Z=z|sex)}|sex \right] 
+\\
+=\frac{\mathbb{E} \left[ Y_i\left( z \right) |sex \right] \mathbb{E} \left[ 1\left\{ Z_i=z \right\} |sex \right]}{\mathbb{P} (Z=z|sex)}
+\\
+=\mathbb{E} \left[ Y_i\left( z \right) |sex \right] $$
+
 
 
 ```{r estimator-for-ATE}
-## 1) 拟合随访模型：π_i = P(R_i = 1 | Z_i, sex_i, X_i)
-##    这里 X_i 用的是 SAP 里这些 baseline covariates
 followup_model <- glm(
   Completion ~ Treatment + Sex_bcf +
     HEI2015_TOTAL_SCORE_bl + Age_years +
@@ -186,112 +199,354 @@ followup_model <- glm(
   family = binomial()
 )
 
-## 2) 计算每个个体的 π_hat 和 IPW 权重 w_i = 1 / π_hat （只对 R_i=1 的人用）
 data_ipw <- data_primary |>
   mutate(
-    # 将 Treatment 转换为 0/1 数值变量
-    # Control = 0, Weight Watchers = 1
-    Treatment_num = as.numeric(Treatment) - 1,  # ordered factor: 1,2 -> 0,1
+    Treatment_num = as.numeric(Treatment) - 1,
     pi_hat = predict(followup_model, type = "response"),
     w_ipw  = ifelse(Completion == 1, 1 / pi_hat, 0)
   )
 
-## 3) 在每个 sex 分层内，用 Horvitz–Thompson 类型的 IPW 估计
-##    注意：这里 Y_i 用的是 HEI2015_TOTAL_SCORE_el
+
 estimate_by_sex <- function(df) {
   df_comp <- df[df$Completion == 1, ]
   
-  # 计算该性别分层内各治疗组的总人数
   N_treat <- sum(df$Treatment_num == 1)
   N_ctrl  <- sum(df$Treatment_num == 0)
   
-  # 如果某个治疗组人数为0，返回 NA
   if (N_treat == 0 | N_ctrl == 0) {
-    warning("Treatment group has 0 participants in this stratum")
+    warning("One group missing in this sex stratum")
     return(tibble(
       N_treat = N_treat,
-      N_ctrl = N_ctrl,
-      mu1_HT = NA_real_,
-      mu0_HT = NA_real_,
-      ATE_HT = NA_real_,
-      mu1_norm = NA_real_,
-      mu0_norm = NA_real_,
-      ATE_norm = NA_real_
+      N_ctrl  = N_ctrl,
+      ATE_HT  = NA_real_
     ))
   }
-
-  ## Horvitz–Thompson 型估计器
+  
   mu1_HT <- with(
     df_comp,
-    sum(w_ipw * (Treatment_num == 1) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
-  ) / N_treat
+    sum(w_ipw * (Treatment_num == 1) * HEI2015_TOTAL_SCORE_el) / N_treat
+  )
   
   mu0_HT <- with(
     df_comp,
-    sum(w_ipw * (Treatment_num == 0) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
-  ) / N_ctrl
+    sum(w_ipw * (Treatment_num == 0) * HEI2015_TOTAL_SCORE_el) / N_ctrl
+  )
   
   ATE_HT <- mu1_HT - mu0_HT
-
-  ## Normalized IPW
-  num_treat <- with(
-    df_comp,
-    sum(w_ipw * (Treatment_num == 1) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
-  )
-  den_treat <- with(df_comp, sum(w_ipw * (Treatment_num == 1), na.rm = TRUE))
   
-  num_ctrl  <- with(
-    df_comp,
-    sum(w_ipw * (Treatment_num == 0) * HEI2015_TOTAL_SCORE_el, na.rm = TRUE)
-  )
-  den_ctrl  <- with(df_comp, sum(w_ipw * (Treatment_num == 0), na.rm = TRUE))
-
-  mu1_norm <- num_treat / den_treat
-  mu0_norm <- num_ctrl  / den_ctrl
-  ATE_norm <- mu1_norm - mu0_norm
-
   tibble(
-    N_treat  = N_treat,
-    N_ctrl   = N_ctrl,
-    mu1_HT   = mu1_HT,
-    mu0_HT   = mu0_HT,
-    ATE_HT   = ATE_HT,
-    mu1_norm = mu1_norm,
-    mu0_norm = mu0_norm,
-    ATE_norm = ATE_norm
+    N_treat = N_treat,
+    N_ctrl  = N_ctrl,
+    ATE_HT  = ATE_HT
   )
 }
 
-## 4) 按 sex 分层估计分层内 ATE_s（= ITT_{Y,sex}）
 ests_by_sex <- data_ipw |>
-  dplyr::group_by(Sex_bcf) |>
-  dplyr::group_modify(~ estimate_by_sex(.x)) |>
-  dplyr::ungroup()
+  group_by(Sex_bcf) |>
+  group_modify(~ estimate_by_sex(.x)) |>
+  ungroup()
 
-print(ests_by_sex)
+ests_by_sex
 
-## 5) 计算 overall ATE
 p_sex <- data_ipw |>
   count(Sex_bcf) |>
   mutate(p = n / sum(n)) |>
   select(Sex_bcf, p)
 
-ATE_overall <- ests_by_sex |>
+ATE_HT_overall <- ests_by_sex |>
   left_join(p_sex, by = "Sex_bcf") |>
   summarise(
-    ATE_HT_overall   = sum(p * ATE_HT, na.rm = TRUE),
-    ATE_norm_overall = sum(p * ATE_norm, na.rm = TRUE)
+    ATE_HT_overall = sum(p * ATE_HT, na.rm = TRUE)
   )
 
-print(ATE_overall)
+ATE_HT_overall
 ```
 
-只保留ATE_HT_overall即可，另一个是Hájek estimator，太难了。
 
 
-# Sensitivity analysis
 ```{r}
+set.seed(2025)
+B <- 1000 
+
+bootstrap_ipw_ate <- function(data, indices) {
+  boot_data <- data[indices, ]
+  
+  followup_model <- glm(
+    Completion ~ Treatment + Sex_bcf +
+      HEI2015_TOTAL_SCORE_bl + Age_years +
+      Race2_bcf + Ethnicity_bcf + Education_grouped,
+    data   = boot_data,
+    family = binomial()
+  )
+  
+  boot_data <- boot_data |>
+    mutate(
+      Treatment_num = as.numeric(Treatment) - 1,
+      pi_hat = predict(followup_model, type = "response"),
+      w_ipw  = ifelse(Completion == 1, 1 / pi_hat, 0)
+    )
+  
+  estimate_by_sex_boot <- function(df) {
+    df_comp <- df[df$Completion == 1, ]
+    
+    N_treat <- sum(df$Treatment_num == 1)
+    N_ctrl  <- sum(df$Treatment_num == 0)
+    
+    if (N_treat == 0 | N_ctrl == 0) {
+      return(tibble(ATE_HT = NA_real_))
+    }
+    
+    mu1_HT <- with(
+      df_comp,
+      sum(w_ipw * (Treatment_num == 1) * HEI2015_TOTAL_SCORE_el) / N_treat
+    )
+    
+    mu0_HT <- with(
+      df_comp,
+      sum(w_ipw * (Treatment_num == 0) * HEI2015_TOTAL_SCORE_el) / N_ctrl
+    )
+    
+    tibble(ATE_HT = mu1_HT - mu0_HT)
+  }
+  
+  ests_by_sex <- boot_data |>
+    group_by(Sex_bcf) |>
+    group_modify(~ estimate_by_sex_boot(.x)) |>
+    ungroup()
+  
+  p_sex <- boot_data |>
+    count(Sex_bcf) |>
+    mutate(p = n / sum(n))
+  
+  ATE_overall <- ests_by_sex |>
+    left_join(p_sex, by = "Sex_bcf", relationship = "many-to-many") |>
+    summarise(ATE = sum(p * ATE_HT, na.rm = TRUE)) |>
+    pull(ATE)
+  
+  c(
+    ATE_overall = ATE_overall,
+    ATE_Female = ests_by_sex$ATE_HT[ests_by_sex$Sex_bcf == "Female"],
+    ATE_Male = ests_by_sex$ATE_HT[ests_by_sex$Sex_bcf == "Male"]
+  )
+}
+
+library(boot)
+boot_results <- boot(
+  data = data_primary,
+  statistic = bootstrap_ipw_ate,
+  R = B
+)
+
+boot_results
+
+ci_overall <- boot.ci(boot_results, type = "perc", index = 1)
+ci_female  <- boot.ci(boot_results, type = "perc", index = 2)
+ci_male    <- boot.ci(boot_results, type = "perc", index = 3)
+
+results_summary <- tibble(
+  Estimand = c("Overall ATE", "ATE (Female)", "ATE (Male)"),
+  Estimate = c(
+    ATE_HT_overall$ATE_HT_overall,
+    ests_by_sex$ATE_HT[ests_by_sex$Sex_bcf == "Female"],
+    ests_by_sex$ATE_HT[ests_by_sex$Sex_bcf == "Male"]
+  ),
+  SE = c(
+    sd(boot_results$t[, 1]),
+    sd(boot_results$t[, 2]),
+    sd(boot_results$t[, 3])
+  ),
+  CI_lower = c(
+    ci_overall$percent[4],
+    ci_female$percent[4],
+    ci_male$percent[4]
+  ),
+  CI_upper = c(
+    ci_overall$percent[5],
+    ci_female$percent[5],
+    ci_male$percent[5]
+  )
+)
+
+print(results_summary, digits = 3)
+
+library(ggplot2)
+library(tidyr)
+
+boot_dist <- tibble(
+  Overall = boot_results$t[, 1],
+  Female = boot_results$t[, 2],
+  Male = boot_results$t[, 3]
+) |>
+  pivot_longer(everything(), names_to = "Stratum", values_to = "ATE")
+
+ci_data <- boot_dist |>
+  group_by(Stratum) |>
+  summarise(
+    lower = quantile(ATE, 0.025, na.rm = TRUE),
+    upper = quantile(ATE, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+point_estimates <- tibble(
+  Stratum = c("Overall", "Female", "Male"),
+  Estimate = c(
+    ATE_HT_overall$ATE_HT_overall,
+    ests_by_sex$ATE_HT[ests_by_sex$Sex_bcf == "Female"],
+    ests_by_sex$ATE_HT[ests_by_sex$Sex_bcf == "Male"]
+  )
+)
 
 
 
+p = ggplot(boot_dist, aes(x = ATE)) +
+  geom_histogram(bin = 1, alpha = 0.7, fill = "steelblue") +
+  geom_vline(data = ci_data, aes(xintercept = lower), 
+             color = "red", linetype = "dashed", linewidth = 0.8) +
+  geom_vline(data = ci_data, aes(xintercept = upper), 
+             color = "red", linetype = "dashed", linewidth = 0.8) +
+  geom_vline(data = point_estimates, aes(xintercept = Estimate),
+             color = "darkgreen", linewidth = 1) +
+  facet_wrap(~ Stratum, scales = "free") +
+  theme_minimal() +
+  labs(title = "Bootstrap Distribution of IPW-ATE Estimates",
+       subtitle = "Green line = point estimate, Red dashed lines = 95% CI",
+       x = "ATE Estimate", 
+       y = "Frequency")
+ggsave(here::here("Main RCT analyses/fig1.pdf"), p, width=8, height=6)
+```
+# linear model by throwing away missing follow-up
+```{r}
+imputed_data = readRDS(here::here("Main RCT analyses/imputed_data.rds"))
+
+model_hei <- lm(HEI2015_TOTAL_SCORE_change ~ HEI2015_TOTAL_SCORE_bl + 
+                  Sex_bcf + Age_years + Race2_bcf + Ethnicity_bcf + 
+                  Education_grouped + Treatment, 
+                data = imputed_data$data)
+
+summary(model_hei)
+
+tidy(model_hei)
+
+glance(model_hei)
+
+par(mfrow = c(2, 2))
+plot(model_hei)
+
+```
+
+
+```{r}
+library(tidyverse)
+
+df <- tribble(
+  ~Method,                  ~ATE, ~CI_low, ~CI_high,
+  "Deleting Missing Data\n(Naive, biased)", 2.93, 1.24, 4.62,
+  "IPW",                    3.83, 0.94, 6.98,
+  "MI Adjusted Model",      2.56, 0.90, 4.22
+)
+
+df$Method <- factor(df$Method, levels = rev(df$Method))
+
+p = ggplot(df, aes(x = ATE, y = Method)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_errorbarh(aes(xmin = CI_low, xmax = CI_high), height = 0.2, size = 1.1) +
+  geom_point(size = 3) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "ATE Estimate",
+    y = "",
+    title = "Estimated ATE Methods"
+  ) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank()
+  )
+
+ggsave(here::here("Main RCT analyses/fig2.pdf"), p, width=5, height=3)
+
+
+```
+
+
+```{r}
+library(tidyverse)
+library(cobalt)
+
+library(tidyverse)
+library(cobalt)
+
+data_primary_complete <- data_primary %>%
+  filter(Completion == 1) %>%  #
+  drop_na(Age_years, Sex_bcf, Race2_bcf, Ethnicity_bcf, 
+          Education_grouped, HEI2015_TOTAL_SCORE_bl)
+
+bal_original <- bal.tab(
+  Treatment ~ Age_years + Sex_bcf + Race2_bcf + 
+    Ethnicity_bcf + Education_grouped + HEI2015_TOTAL_SCORE_bl,
+  data = data_primary_complete,
+  estimand = "ATE",
+  s.d.denom = "pooled"
+)
+
+bal_imputed <- bal.tab(
+  Treatment ~ Age_years + Sex_bcf + Race2_bcf + 
+    Ethnicity_bcf + Education_grouped + HEI2015_TOTAL_SCORE_bl,
+  data = imputed_data$data,
+  estimand = "ATE",
+  s.d.denom = "pooled"
+)
+
+balance_original <- bal_original$Balance %>%
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  select(variable, smd = Diff.Un) %>%
+  mutate(
+    variable = str_replace(variable, 
+                          "Race2_bcf_Native Hawaiian or other Pacific Islander, Multiracial, Other or Prefer not to say",
+                          "Race2_bcf_Others"),
+    dataset = "Original Data"
+  )
+
+balance_imputed <- bal_imputed$Balance %>%
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  select(variable, smd = Diff.Un) %>%
+  mutate(
+    variable = str_replace(variable, 
+                          "Race2_bcf_Native Hawaiian or other Pacific Islander, Multiracial, Other or Prefer not to say",
+                          "Race2_bcf_Others"),
+    dataset = "Imputed Data"
+  )
+
+balance_combined <- bind_rows(balance_original, balance_imputed)
+
+cat("Original complete cases:", nrow(data_primary_complete), "\n")
+cat("Imputed data:", nrow(imputed_data$data), "\n")
+
+p = ggplot(balance_combined, aes(x = abs(smd), y = reorder(variable, abs(smd)), 
+                              color = dataset, shape = dataset)) +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  geom_vline(xintercept = 0.1, linetype = "dashed", color = "gray50", linewidth = 0.8) +
+  geom_vline(xintercept = 0, color = "black", linewidth = 0.5) +
+  labs(
+    title = "Covariate Balance: Love Plot",
+    x = "Absolute Standardized Mean Difference",
+    y = "Covariates",
+    color = "Dataset",
+    shape = "Dataset"
+  ) +
+  scale_color_manual(values = c("Original Data" = "#E69F00", 
+                                "Imputed Data" = "#0072B2")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 11),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_text(size = 9)
+  )
+
+ggsave(here::here("Main RCT analyses/fig3.pdf"), p, width=6, height=4)
 ```

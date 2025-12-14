@@ -1,0 +1,5 @@
+| Efficacy (Primary Outcomes)                                                                 | Toxicities (Primary Safety Findings)                                      |
+|---------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| • Adding SBRT to pembrolizumab **did not improve PFS** vs pembrolizumab alone.             | • SBRT + pembrolizumab caused **more treatment‑related adverse events**. |
+| • No meaningful benefit in **overall response rate** with SBRT + pembrolizumab.            | • **Higher rate of grade ≥3 toxicities** in the SBRT + pembrolizumab arm.|
+| • No improvement in **overall survival** with SBRT + pembrolizumab.                        | • **Added toxicity without clear efficacy gain** from SBRT combination.  |
